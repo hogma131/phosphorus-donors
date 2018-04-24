@@ -1,4 +1,4 @@
-# Make some classes containing useful parameters regarding 31P donors in silicon
+# Some classes containing useful parameters regarding 31P donors in silicon
 
 import scipy.constants as const
 import matplotlib.pyplot as plt
@@ -170,10 +170,18 @@ class SingleDonor():
 		
 		
 def rabi_drive(t, args):
-		'''
-		Defining the function for the time dependence. Not sure if this will work with the extra argument or not?
-		'''
-		return args['b1']*np.cos(2*np.pi*args['freq']*t + args['phase'])		
+	'''
+	Defining the function for the time dependence. Not sure if this will work with the extra argument or not?
+	'''
+	return args['b1']*np.cos(2*np.pi*args['freq']*t + args['phase'])
+		
+def detuning_pulse(t, args):
+	'''
+	Detuning pulse function for time-dependent Hamiltonian solver. Can use this to simulate e.g. pulsing a gate.
+	Just does a linear ramp for now
+	'''
+	return (args['stop']-args['start'])*t
+	
 		
 		
 class DonorSingletTriplet(SingleDonor):
@@ -218,9 +226,28 @@ class DonorSingletTriplet(SingleDonor):
 		H = H_zeeman_left + H_zeeman_right + H_charge + H_exchange
 		
 		# Just taking 5 by 5 Hamiltonian 
+		# Defined in the basis [S11, T-, T0, T+, S20]
 		# H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
 								# [0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
 		return H
+		
+	def build_full_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc1=1e9, tc2=0.5e9, pauli_energy=5e9):
+		'''
+		Make the full 8 by 8 spin Hamiltonian for singlet and triplet states on both dots
+		'''
+		# In the basis (S11, T-11, T011, T+11, S02, T-02, T002, T+02)
+		Zeeman = 0.5*self.electron_gyro*b_z
+		#print(Zeeman)
+		#print(-detuning/2+Zeeman)
+		H_array = np.array([[detuning/2, 0, dBz, 0, tc1, 0, 0, 0], [0,detuning/2-Zeeman,0,0,0,tc2,0,0], 
+							[dBz,0,detuning/2,0,0,0,tc2,0], [0,0,0,detuning/2+Zeeman,0,0,0,tc2], 
+							[tc1,0,0,0,-detuning/2,0,0,0], [0,tc2,0,0,0,-detuning/2-Zeeman+pauli_energy,0,0], 
+							[0,0,tc2,0,0,0,-detuning/2+pauli_energy,0], [0,0,0,tc2,0,0,0,-detuning/2+Zeeman+pauli_energy]])
+		#print(H_array.shape)
+		#print('H shape is %s' % H_array.shape)
+		H = qu.Qobj(H_array)
+		return H
+		
 		
 	def calculate_exchange(self, detuning, tc):
 		'''
@@ -257,6 +284,22 @@ class DonorSingletTriplet(SingleDonor):
 		# plt.ylabel('Projection')
 		# plt.legend(['E up, N down', 'E up, N up'])
 		plt.show(block=False)
+		
+	def do_detuning_pulse(self, start, stop, psi0, ramp_time, num_points=1000):
+		'''
+		'''
+		tlist = np.linspace(0, ramp_time, num_points)
+		pulse_args = {'start':start, 'stop': stop}
+		detuning_hamiltonian = qu.Qobj(np.array([[1/2, 0, 0, 0, 0], 
+												[0, 1/2, 0,0,0], 
+												[0, 0, 1/2,0,0], 
+												[0,0,0,1/2,0], 
+												[0,0,0,0,-1/2]]))
+		start_hamiltonian = self.build_hamiltonian(b_z=0.05, detuning=start)
+		full_H = [start_hamiltonian, [detuning_hamiltonian, detuning_pulse]]
+		output = qu.mesolve(full_H, psi0, tlist, c_ops=[], e_ops=[], args=pulse_args)
+		return output, tlist
+		
 		
 		
 		
