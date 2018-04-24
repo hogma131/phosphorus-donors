@@ -207,19 +207,19 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		# Zeeman term for electrons on left and right dots
 		Zeeman = 0.5*self.electron_gyro*b_z
-		# H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
-		# H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
-		# # J = self.calculate_exchange(detuning, tc)
-		# # H_exchange = J*(qu.tensor(qu.sigmax(), qu.sigmax(), qu.identity(2)) + 
-						# # qu.tensor(qu.sigmay(), qu.sigmay(), qu.identity(2)) +
-						# # qu.tensor(qu.sigmaz(), qu.sigmaz(), qu.identity(2)))
-		# H_charge = (detuning/2*(qu.tensor(qu.identity(2), qu.identity(2), qu.sigmaz())) + 
-						# tc*qu.tensor(qu.identity(2), qu.identity(2), qu.sigmax()))
-		# H = H_zeeman_left + H_zeeman_right + H_charge
+		H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
+		H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
+		J = self.calculate_exchange(detuning, tc)
+		H_exchange = J*(qu.tensor(qu.sigmax(), qu.sigmax(), qu.identity(2))
+						+ qu.tensor(qu.sigmay(), qu.sigmay(), qu.identity(2))
+						+ qu.tensor(qu.sigmaz(), qu.sigmaz(), qu.identity(2)))
+		H_charge = (detuning/2*(qu.tensor(qu.identity(2), qu.identity(2), qu.sigmaz())) + 
+						tc*qu.tensor(qu.identity(2), qu.identity(2), qu.sigmax()))
+		H = H_zeeman_left + H_zeeman_right + H_charge + H_exchange
 		
 		# Just taking 5 by 5 Hamiltonian 
-		H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
-								[0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
+		# H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
+								# [0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
 		return H
 		
 	def calculate_exchange(self, detuning, tc):
@@ -235,7 +235,8 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		'''
 		detuning_sweep = np.linspace(start, stop, num_points)
-		self.eigenvals = np.zeros([num_points, 5])
+		self.eigenvals = np.zeros([num_points, 8])
+		# self.eigenvals = np.zeros([num_points, 5])
 		# projvecs = np.zeros([len(b_sweep), 4])
 		for ind,val in enumerate(detuning_sweep):
 			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc)
