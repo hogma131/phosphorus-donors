@@ -215,20 +215,20 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		# Zeeman term for electrons on left and right dots
 		Zeeman = 0.5*self.electron_gyro*b_z
-		H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
-		H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
-		J = self.calculate_exchange(detuning, tc)
-		H_exchange = J*(qu.tensor(qu.sigmax(), qu.sigmax(), qu.identity(2))
-						+ qu.tensor(qu.sigmay(), qu.sigmay(), qu.identity(2))
-						+ qu.tensor(qu.sigmaz(), qu.sigmaz(), qu.identity(2)))
-		H_charge = (detuning/2*(qu.tensor(qu.identity(2), qu.identity(2), qu.sigmaz())) + 
-						tc*qu.tensor(qu.identity(2), qu.identity(2), qu.sigmax()))
-		H = H_zeeman_left + H_zeeman_right + H_charge + H_exchange
+		# H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
+		# H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
+		# J = self.calculate_exchange(detuning, tc)
+		# H_exchange = J*(qu.tensor(qu.sigmax(), qu.sigmax(), qu.identity(2))
+						# + qu.tensor(qu.sigmay(), qu.sigmay(), qu.identity(2))
+						# + qu.tensor(qu.sigmaz(), qu.sigmaz(), qu.identity(2)))
+		# H_charge = (detuning/2*(qu.tensor(qu.identity(2), qu.identity(2), qu.sigmaz())) + 
+						# tc*qu.tensor(qu.identity(2), qu.identity(2), qu.sigmax()))
+		# H = H_zeeman_left + H_zeeman_right + H_charge + H_exchange
 		
 		# Just taking 5 by 5 Hamiltonian 
 		# Defined in the basis [S11, T-, T0, T+, S20]
-		# H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
-								# [0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
+		H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
+								[0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
 		return H
 		
 	def build_full_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc1=1e9, tc2=0.5e9, pauli_energy=5e9):
@@ -258,7 +258,7 @@ class DonorSingletTriplet(SingleDonor):
 		
 	# def plot_spectrum_vs_bfield(self, ):
 	
-	def plot_spectrum_vs_detuning(self, start, stop, num_points=1000, b_z=1, tc=1e9):
+	def plot_spectrum_vs_detuning(self, start, stop, num_points=1000, b_z=1, tc=1e9, dBz=0.01):
 		'''
 		'''
 		detuning_sweep = np.linspace(start, stop, num_points)
@@ -266,7 +266,7 @@ class DonorSingletTriplet(SingleDonor):
 		# self.eigenvals = np.zeros([num_points, 5])
 		# projvecs = np.zeros([len(b_sweep), 4])
 		for ind,val in enumerate(detuning_sweep):
-			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc)
+			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc, dBz=dBz)
 			self.eigenvals[ind], temp_vecs = self.Hamiltonian.eigenstates()
 			# projvecs[ind] = self.project_eigenvecs(temp_vecs)
 		plt.figure(1)
