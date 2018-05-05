@@ -215,6 +215,7 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		# Zeeman term for electrons on left and right dots
 		Zeeman = 0.5*self.electron_gyro*b_z
+		dBz = 0.5*self.electron_gyro*dBz
 		# H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
 		# H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
 		# J = self.calculate_exchange(detuning, tc)
@@ -262,8 +263,8 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		'''
 		detuning_sweep = np.linspace(start, stop, num_points)
-		self.eigenvals = np.zeros([num_points, 8])
-		# self.eigenvals = np.zeros([num_points, 5])
+		# self.eigenvals = np.zeros([num_points, 8])
+		self.eigenvals = np.zeros([num_points, 5])
 		# projvecs = np.zeros([len(b_sweep), 4])
 		for ind,val in enumerate(detuning_sweep):
 			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc, dBz=dBz)
