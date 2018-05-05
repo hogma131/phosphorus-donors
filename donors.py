@@ -171,7 +171,7 @@ class SingleDonor():
 		
 def rabi_drive(t, args):
 	'''
-	Defining the function for the time dependence. Not sure if this will work with the extra argument or not?
+	Defining the function for the time dependence.
 	'''
 	return args['b1']*np.cos(2*np.pi*args['freq']*t + args['phase'])
 		
@@ -180,7 +180,7 @@ def detuning_pulse(t, args):
 	Detuning pulse function for time-dependent Hamiltonian solver. Can use this to simulate e.g. pulsing a gate.
 	Just does a linear ramp for now
 	'''
-	return (args['stop']-args['start'])*t
+	return (args['stop']-args['start'])*t/args['tmax']
 	
 		
 		
@@ -190,10 +190,11 @@ class DonorSingletTriplet(SingleDonor):
 	'''
 	
 	# Define basis vectors
-	up = qu.basis(2,0)
-	dn = qu.basis(2,1)
-	left = qu.basis(2,0)
-	right = qu.basis(2,1)
+	S11 = qu.basis(5,0)
+	Tm = qu.basis(5,1)
+	T0 = qu.basis(5,2)
+	Tp = qu.basis(5,3)
+	S20 = qu.basis(5,4)
 	
 	def __init__(self, **kwargs):
 		'''
@@ -213,18 +214,19 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		Build the singlet-triplet Hamiltonian
 		'''
+		# Convert Zeeman terms to frequency units
+		Zeeman = (0.5*self.electron_gyro*b_z)/(2*np.pi)
+		dBz = 0.5*self.electron_gyro*dBz/(2*np.pi)
 		# Zeeman term for electrons on left and right dots
-		Zeeman = 0.5*self.electron_gyro*b_z
-		dBz = 0.5*self.electron_gyro*dBz
-		# H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
-		# H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
-		# J = self.calculate_exchange(detuning, tc)
-		# H_exchange = J*(qu.tensor(qu.sigmax(), qu.sigmax(), qu.identity(2))
-						# + qu.tensor(qu.sigmay(), qu.sigmay(), qu.identity(2))
-						# + qu.tensor(qu.sigmaz(), qu.sigmaz(), qu.identity(2)))
-		# H_charge = (detuning/2*(qu.tensor(qu.identity(2), qu.identity(2), qu.sigmaz())) + 
-						# tc*qu.tensor(qu.identity(2), qu.identity(2), qu.sigmax()))
-		# H = H_zeeman_left + H_zeeman_right + H_charge + H_exchange
+		#~ H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
+		#~ H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
+		#~ J = self.calculate_exchange(detuning, tc)
+		#~ H_exchange = J*(qu.tensor(qu.sigmax(), qu.sigmax(), qu.identity(2))
+						#~ + qu.tensor(qu.sigmay(), qu.sigmay(), qu.identity(2))
+						#~ + qu.tensor(qu.sigmaz(), qu.sigmaz(), qu.identity(2)))
+		#~ H_charge = (detuning/2*(qu.tensor(qu.identity(2), qu.identity(2), qu.sigmaz())) + 
+						#~ tc*qu.tensor(qu.identity(2), qu.identity(2), qu.sigmax()))
+		#~ H = H_zeeman_left + H_zeeman_right + H_charge + H_exchange
 		
 		# Just taking 5 by 5 Hamiltonian 
 		# Defined in the basis [S11, T-, T0, T+, S20]
@@ -249,6 +251,17 @@ class DonorSingletTriplet(SingleDonor):
 		H = qu.Qobj(H_array)
 		return H
 		
+	def project_eigenvecs(self, psi):
+		'''
+		Project state psi onto the basis [S11, T-, T0, T+, S20]
+		'''
+		S11_proj = np.abs(psi.overlap(self.S11))**2
+		Tm_proj = np.abs(psi.overlap(self.Tm))**2
+		T0_proj = np.abs(psi.overlap(self.T0))**2
+		Tp_proj = np.abs(psi.overlap(self.Tp))**2
+		S20_proj = np.abs(psi.overlap(self.S20))**2
+		overlap_vec = np.array([S11_proj, Tm_proj, T0_proj, Tp_proj, S20_proj])
+		return overlap_vec
 		
 	def calculate_exchange(self, detuning, tc):
 		'''
@@ -257,13 +270,12 @@ class DonorSingletTriplet(SingleDonor):
 		J = detuning/2 + np.sqrt((detuning/2)**2 + tc**2)
 		return J
 		
-	# def plot_spectrum_vs_bfield(self, ):
 	
-	def plot_spectrum_vs_detuning(self, start, stop, num_points=1000, b_z=1, tc=1e9, dBz=0.01):
+	def plot_spectrum_vs_detuning(self, start, stop, num_points=1000, b_z=1, dBz=0.01, tc=1e9):
 		'''
 		'''
 		detuning_sweep = np.linspace(start, stop, num_points)
-		# self.eigenvals = np.zeros([num_points, 8])
+		#~ self.eigenvals = np.zeros([num_points, 8])
 		self.eigenvals = np.zeros([num_points, 5])
 		# projvecs = np.zeros([len(b_sweep), 4])
 		for ind,val in enumerate(detuning_sweep):
@@ -286,17 +298,19 @@ class DonorSingletTriplet(SingleDonor):
 		# plt.legend(['E up, N down', 'E up, N up'])
 		plt.show(block=False)
 		
-	def do_detuning_pulse(self, start, stop, psi0, ramp_time, num_points=1000):
+	def do_detuning_pulse(self, start, stop, psi0, ramp_time, num_points=1000, **kwargs):
 		'''
+		Run an experiment that pulses the detuning from a start value to a stop value
 		'''
 		tlist = np.linspace(0, ramp_time, num_points)
-		pulse_args = {'start':start, 'stop': stop}
+		pulse_args = {'start':start, 'stop': stop, 'tmax': ramp_time}
 		detuning_hamiltonian = qu.Qobj(np.array([[1/2, 0, 0, 0, 0], 
 												[0, 1/2, 0,0,0], 
 												[0, 0, 1/2,0,0], 
 												[0,0,0,1/2,0], 
 												[0,0,0,0,-1/2]]))
-		start_hamiltonian = self.build_hamiltonian(b_z=0.05, detuning=start)
+		tc = kwargs.get('tunnel_coupling', 500e6)
+		start_hamiltonian = self.build_hamiltonian(detuning=start, b_z=0.1, dBz=0.005, tc=tc)
 		full_H = [start_hamiltonian, [detuning_hamiltonian, detuning_pulse]]
 		output = qu.mesolve(full_H, psi0, tlist, c_ops=[], e_ops=[], args=pulse_args)
 		return output, tlist
