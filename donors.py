@@ -195,6 +195,9 @@ class DonorSingletTriplet(SingleDonor):
 	T0 = qu.basis(5,2)
 	Tp = qu.basis(5,3)
 	S20 = qu.basis(5,4)
+	# Also updn and dnup basis - not sure if I have these the correct way round
+	updn = (T0 - S11).unit()
+	dnup = (T0 + S11).unit()
 	
 	def __init__(self, **kwargs):
 		'''
@@ -210,13 +213,20 @@ class DonorSingletTriplet(SingleDonor):
 		self.nuclear_gyro = ng_factor*self._mu_n/const.hbar
 		self.Hamiltonian = self.build_hamiltonian(b_z=self.b_z, dBz=self.dBz)
 
-	def build_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc=1e9):
+	def build_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc=1e9, alpha=0.1):
 		'''
 		Build the singlet-triplet Hamiltonian
+		Inputs:
+			b_z (Tesla) - static magnetic field applied along the z direction
+			dBz (Tesla) - delta Bz between the two qubit sites
+			detuning (V) - detuning from the charge degeneracy point in volts
+			tc (Hz)		- tunnel coupling (in frequency units)
+			alpha 		- lever arm of gate that voltage is applied to (unitless)
 		'''
 		# Convert Zeeman terms to frequency units
 		Zeeman = (0.5*self.electron_gyro*b_z)/(2*np.pi)
 		dBz = 0.5*self.electron_gyro*dBz/(2*np.pi)
+		detuning = alpha*detuning*const.eV/const.h	# Convert from voltage to frequency
 		# Zeeman term for electrons on left and right dots
 		#~ H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
 		#~ H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
@@ -253,14 +263,16 @@ class DonorSingletTriplet(SingleDonor):
 		
 	def project_eigenvecs(self, psi):
 		'''
-		Project state psi onto the basis [S11, T-, T0, T+, S20]
+		Project state psi onto the basis [S11, T-, T0, T+, S20, updn, dnup]
 		'''
 		S11_proj = np.abs(psi.overlap(self.S11))**2
 		Tm_proj = np.abs(psi.overlap(self.Tm))**2
 		T0_proj = np.abs(psi.overlap(self.T0))**2
 		Tp_proj = np.abs(psi.overlap(self.Tp))**2
 		S20_proj = np.abs(psi.overlap(self.S20))**2
-		overlap_vec = np.array([S11_proj, Tm_proj, T0_proj, Tp_proj, S20_proj])
+		updn_proj = np.abs(psi.overlap(self.updn))**2
+		dnup_proj = np.abs(psi.overlap(self.dnup))**2
+		overlap_vec = np.array([S11_proj, Tm_proj, T0_proj, Tp_proj, S20_proj, updn_proj, dnup_proj])
 		return overlap_vec
 		
 	def calculate_exchange(self, detuning, tc):
@@ -271,7 +283,7 @@ class DonorSingletTriplet(SingleDonor):
 		return J
 		
 	
-	def plot_spectrum_vs_detuning(self, start, stop, num_points=1000, b_z=1, dBz=0.01, tc=1e9):
+	def plot_spectrum_vs_detuning(self, start, stop, num_points=1000, b_z=1, dBz=0.01, tc=1e9, alpha=0.1):
 		'''
 		'''
 		detuning_sweep = np.linspace(start, stop, num_points)
@@ -279,7 +291,7 @@ class DonorSingletTriplet(SingleDonor):
 		self.eigenvals = np.zeros([num_points, 5])
 		# projvecs = np.zeros([len(b_sweep), 4])
 		for ind,val in enumerate(detuning_sweep):
-			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc, dBz=dBz)
+			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc, dBz=dBz, alpha=alpha)
 			self.eigenvals[ind], temp_vecs = self.Hamiltonian.eigenstates()
 			# projvecs[ind] = self.project_eigenvecs(temp_vecs)
 		plt.figure(1)
@@ -297,6 +309,7 @@ class DonorSingletTriplet(SingleDonor):
 		# plt.ylabel('Projection')
 		# plt.legend(['E up, N down', 'E up, N up'])
 		plt.show(block=False)
+		return plt
 		
 	def do_detuning_pulse(self, start, stop, psi0, ramp_time, num_points=1000, **kwargs):
 		'''
@@ -304,15 +317,20 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		tlist = np.linspace(0, ramp_time, num_points)
 		pulse_args = {'start':start, 'stop': stop, 'tmax': ramp_time}
-		detuning_hamiltonian = qu.Qobj(np.array([[1/2, 0, 0, 0, 0], 
-												[0, 1/2, 0,0,0], 
-												[0, 0, 1/2,0,0], 
-												[0,0,0,1/2,0], 
-												[0,0,0,0,-1/2]]))
 		tc = kwargs.get('tunnel_coupling', 500e6)
-		start_hamiltonian = self.build_hamiltonian(detuning=start, b_z=0.1, dBz=0.005, tc=tc)
+		options = kwargs.get('options', None)
+		alpha = kwargs.get('alpha', 0.1)
+		b_z = kwargs.get('b_z', 0.1)
+		dBz = kwargs.get('dBz', 0.005)
+		start_hamiltonian = self.build_hamiltonian(detuning=start, b_z=b_z, dBz=dBz, tc=tc, alpha=alpha)
+		conversion = alpha*const.eV/const.h		# Convert voltage pulse to frequency units
+		detuning_hamiltonian = conversion*qu.Qobj(np.array([[1/2, 0, 0, 0, 0], 
+														[0, 1/2, 0,0,0], 
+														[0, 0, 1/2,0,0], 
+														[0,0,0,1/2,0], 
+														[0,0,0,0,-1/2]]))
 		full_H = [start_hamiltonian, [detuning_hamiltonian, detuning_pulse]]
-		output = qu.mesolve(full_H, psi0, tlist, c_ops=[], e_ops=[], args=pulse_args)
+		output = qu.mesolve(full_H, psi0, tlist, c_ops=[], e_ops=[], args=pulse_args, options=options, progress_bar=True)
 		return output, tlist
 		
 		
