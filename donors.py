@@ -186,7 +186,7 @@ def detuning_pulse(t, args):
 		
 class DonorSingletTriplet(SingleDonor):
 	'''
-	Class defining a singlet triplet 31P donor spin system
+	Class defining a singlet triplet 31P donor spin system. Needs work to include the nuclei.
 	'''
 	
 	# Define basis vectors
