@@ -257,11 +257,13 @@ class DonorSingletTriplet(SingleDonor):
 			detuning (V) - detuning from the charge degeneracy point in volts
 			tc (Hz)		- tunnel coupling (in frequency units)
 			alpha 		- lever arm of gate that voltage is applied to (unitless)
+		Todo:
+			- Check that detuning scaling is correct (factor of 2pi or not)
 		'''
 		# Convert Zeeman terms to frequency units
 		Zeeman = (0.5*self.electron_gyro*b_z)/(2*np.pi)
 		dBz = 0.5*self.electron_gyro*dBz/(2*np.pi)
-		detuning = alpha*detuning*const.eV/const.h	# Convert from voltage to frequency
+		detuning = alpha*detuning*const.eV/(2*np.pi*const.h)	# Convert from voltage to frequency
 		# Zeeman term for electrons on left and right dots
 		#~ H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
 		#~ H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
@@ -279,12 +281,14 @@ class DonorSingletTriplet(SingleDonor):
 								[0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
 		return H
 		
-	def build_full_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc1=1e9, tc2=0.5e9, pauli_energy=5e9):
+	def build_full_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc1=1e9, tc2=0.5e9, pauli_energy=50e9, alpha=0.1):
 		'''
 		Make the full 8 by 8 spin Hamiltonian for singlet and triplet states on both dots
 		'''
 		# In the basis (S11, T-11, T011, T+11, S02, T-02, T002, T+02)
-		Zeeman = 0.5*self.electron_gyro*b_z
+		Zeeman = (0.5*self.electron_gyro*b_z)/(2*np.pi)
+		dBz = 0.5*self.electron_gyro*dBz/(2*np.pi)
+		detuning = alpha*detuning*const.eV/(2*np.pi*const.h)
 		#print(Zeeman)
 		#print(-detuning/2+Zeeman)
 		H_array = np.array([[detuning/2, 0, dBz, 0, tc1, 0, 0, 0], [0,detuning/2-Zeeman,0,0,0,tc2,0,0], 
@@ -322,11 +326,12 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		'''
 		detuning_sweep = np.linspace(start, stop, num_points)
-		#~ self.eigenvals = np.zeros([num_points, 8])
+		# self.eigenvals = np.zeros([num_points, 8])
 		self.eigenvals = np.zeros([num_points, 5])
 		# projvecs = np.zeros([len(b_sweep), 4])
 		for ind,val in enumerate(detuning_sweep):
 			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc, dBz=dBz, alpha=alpha)
+			# self.Hamiltonian = self.build_full_hamiltonian(detuning=val, b_z=b_z, dBz=dBz, alpha=alpha)
 			self.eigenvals[ind], temp_vecs = self.Hamiltonian.eigenstates()
 			# projvecs[ind] = self.project_eigenvecs(temp_vecs)
 		plt.figure(1)
