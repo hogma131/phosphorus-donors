@@ -131,6 +131,7 @@ class SingleDonor():
 		Todo:
 			- Have detuning from resonance as an input parameters
 			- Come up with a more flexible way of choosing initial states and resonances to drive
+			- Have solver options as kwargs input
 		'''
 		self.Hamiltonian = self.build_hamiltonian(static_mag=bz) 	# Update the static Hamiltonian
 		esr1_freq, esr2_freq, nmr1_freq, nmr2_freq = self.calculate_resonance_freqs()
@@ -138,6 +139,7 @@ class SingleDonor():
 		tmax = kwargs.get('tmax', np.pi/(self.electron_gyro*b1)) 	# Default should be approximately a pi/2 pulse
 		n_steps = kwargs.get('n_steps', 1000)
 		tlist = np.linspace(0,tmax,n_steps)
+		# Operator list to be evaluated at each time step
 		e_ops_list = [self.Sx_operator, self.Sy_operator, self.Sz_operator, self.Ix_operator, 
 						self.Iy_operator, self.Iz_operator]
 		drive_args = {'b1':b1, 'freq':freq, 'phase':0}
@@ -374,6 +376,25 @@ class CoupledDonors():
 	Class for a coupled donor system
 	'''
 	
-	def __init__(self, Donor1, Donor2):
+	S11 = qu.basis(5,0)
+	Tm = qu.basis(5,1)
+	T0 = qu.basis(5,2)
+	Tp = qu.basis(5,3)
+	S20 = qu.basis(5,4)
+	
+	def __init__(self, Donor1, Donor2, b_z=1, dBz=0.01):
 		'''
+		Initialise coupled donor system
 		'''
+		self.Hamiltonian = self.build_hamiltonian(Donor1, Donor2)
+		
+	def build_hamiltonian(Donor1, Donor2):
+		'''
+		Build the Hamiltonian for coupled donor system
+		'''
+		H_uncoupled = qu.tensor(Donor1.Hamiltonian, qu.identity(2), qu.identity(2)) + qu.tensor(qu.identity(2), ...
+								qu.identity(2), Donor2.Hamiltonian)
+		
+		
+		H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
+								[0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
