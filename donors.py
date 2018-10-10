@@ -259,11 +259,13 @@ class DonorSingletTriplet(SingleDonor):
 			detuning (V) - detuning from the charge degeneracy point in volts
 			tc (Hz)		- tunnel coupling (in frequency units)
 			alpha 		- lever arm of gate that voltage is applied to (unitless)
+		Todo:
+			- Check that detuning scaling is correct (factor of 2pi or not)
 		'''
 		# Convert Zeeman terms to frequency units
 		Zeeman = (0.5*self.electron_gyro*b_z)/(2*np.pi)
 		dBz = 0.5*self.electron_gyro*dBz/(2*np.pi)
-		detuning = alpha*detuning*const.eV/const.h	# Convert from voltage to frequency
+		detuning = alpha*detuning*const.eV/(2*np.pi*const.h)	# Convert from voltage to frequency
 		# Zeeman term for electrons on left and right dots
 		#~ H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
 		#~ H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
@@ -281,12 +283,14 @@ class DonorSingletTriplet(SingleDonor):
 								[0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
 		return H
 		
-	def build_full_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc1=1e9, tc2=0.5e9, pauli_energy=5e9):
+	def build_full_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc1=1e9, tc2=0.5e9, pauli_energy=50e9, alpha=0.1):
 		'''
 		Make the full 8 by 8 spin Hamiltonian for singlet and triplet states on both dots
 		'''
 		# In the basis (S11, T-11, T011, T+11, S02, T-02, T002, T+02)
-		Zeeman = 0.5*self.electron_gyro*b_z
+		Zeeman = (0.5*self.electron_gyro*b_z)/(2*np.pi)
+		dBz = 0.5*self.electron_gyro*dBz/(2*np.pi)
+		detuning = alpha*detuning*const.eV/(2*np.pi*const.h)
 		#print(Zeeman)
 		#print(-detuning/2+Zeeman)
 		H_array = np.array([[detuning/2, 0, dBz, 0, tc1, 0, 0, 0], [0,detuning/2-Zeeman,0,0,0,tc2,0,0], 
@@ -324,11 +328,12 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		'''
 		detuning_sweep = np.linspace(start, stop, num_points)
-		#~ self.eigenvals = np.zeros([num_points, 8])
+		# self.eigenvals = np.zeros([num_points, 8])
 		self.eigenvals = np.zeros([num_points, 5])
 		# projvecs = np.zeros([len(b_sweep), 4])
 		for ind,val in enumerate(detuning_sweep):
 			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc, dBz=dBz, alpha=alpha)
+			# self.Hamiltonian = self.build_full_hamiltonian(detuning=val, b_z=b_z, dBz=dBz, alpha=alpha)
 			self.eigenvals[ind], temp_vecs = self.Hamiltonian.eigenstates()
 			# projvecs[ind] = self.project_eigenvecs(temp_vecs)
 		plt.figure(1)
@@ -371,7 +376,8 @@ class DonorSingletTriplet(SingleDonor):
 		return output, tlist
 		
 		
-class CoupledDonors():
+class CoupledDonors(): 
+
 	'''
 	Class for a coupled donor system
 	'''
@@ -386,6 +392,7 @@ class CoupledDonors():
 		'''
 		Initialise coupled donor system
 		'''
+<<<<<<< HEAD
 		self.Hamiltonian = self.build_hamiltonian(Donor1, Donor2)
 		
 	def build_hamiltonian(Donor1, Donor2):
@@ -398,3 +405,70 @@ class CoupledDonors():
 		
 		H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
 								[0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
+=======
+
+class PulseSequence():
+	'''
+	Class to encapsulate a pulsing object which can be used in a time-dependent simulation
+	'''
+	
+	def __init__(self):
+		'''
+		'''
+		self.segments = []
+		self.segment_names = []
+		
+	def add_segment(self, pulse_seg, name):
+		'''
+		Add a segment to the sequence
+		'''
+		assert (name not in self.segment_names), "Pulse segment with that name already exists!"
+		self.segment_names.append(name)
+		self.segments.append(pulse_seg)
+		
+	def make_waveform(self):
+		'''
+		Concatenate all the segments to make a waveform
+		'''
+		point_waveform = np.zeros(len(self.segments)/2 + 1)
+		for ind,val in enumerate(self.segments):
+			# point_waveform[ind] = 
+		
+	def resample_waveform(self):
+		'''
+		'''
+		
+		
+class PulseSegment():
+	'''
+	Class for pulse segments, which can be stitched together to form a PulseSequence
+	'''
+	
+	def __init__(self, pulse_type, duration, start_val, **kwargs):
+		'''
+		'''
+		self.pulse_type = pulse_type
+		self.duration = duration
+		self.start_val = start_val
+		self.end_val = kwargs.get('end_val', start_val)
+		self.time_vector = np.array([0, self.duration])
+		self.construct_pulse()
+		
+	def construct_pulse(self):
+		'''
+		'''
+		if (self.pulse_type == 'level'):
+			self.pulse_values = np.array([self.start_val, self.start_val])
+		elif (self.pulse_type == 'ramp'):
+			self.pulse_values = np.array([self.start_val, self.end_val])
+			
+	
+	
+	
+	
+	
+	
+	
+	
+	
+>>>>>>> 2cfba22e8c0eb5c58dc90b1ee848011220d6c577
