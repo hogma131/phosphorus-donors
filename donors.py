@@ -374,7 +374,8 @@ class DonorSingletTriplet(SingleDonor):
 		return output, tlist
 		
 		
-class CoupledDonors():
+class CoupledDonors(): 
+
 	'''
 	Class for a coupled donor system
 	'''
@@ -382,3 +383,68 @@ class CoupledDonors():
 	def __init__(self, Donor1, Donor2):
 		'''
 		'''
+
+class PulseSequence():
+	'''
+	Class to encapsulate a pulsing object which can be used in a time-dependent simulation
+	'''
+	
+	def __init__(self):
+		'''
+		'''
+		self.segments = []
+		self.segment_names = []
+		
+	def add_segment(self, pulse_seg, name):
+		'''
+		Add a segment to the sequence
+		'''
+		assert (name not in self.segment_names), "Pulse segment with that name already exists!"
+		self.segment_names.append(name)
+		self.segments.append(pulse_seg)
+		
+	def make_waveform(self):
+		'''
+		Concatenate all the segments to make a waveform
+		'''
+		point_waveform = np.zeros(len(self.segments)/2 + 1)
+		for ind,val in enumerate(self.segments):
+			# point_waveform[ind] = 
+		
+	def resample_waveform(self):
+		'''
+		'''
+		
+		
+class PulseSegment():
+	'''
+	Class for pulse segments, which can be stitched together to form a PulseSequence
+	'''
+	
+	def __init__(self, pulse_type, duration, start_val, **kwargs):
+		'''
+		'''
+		self.pulse_type = pulse_type
+		self.duration = duration
+		self.start_val = start_val
+		self.end_val = kwargs.get('end_val', start_val)
+		self.time_vector = np.array([0, self.duration])
+		self.construct_pulse()
+		
+	def construct_pulse(self):
+		'''
+		'''
+		if (self.pulse_type == 'level'):
+			self.pulse_values = np.array([self.start_val, self.start_val])
+		elif (self.pulse_type == 'ramp'):
+			self.pulse_values = np.array([self.start_val, self.end_val])
+			
+	
+	
+	
+	
+	
+	
+	
+	
+	
