@@ -2,6 +2,7 @@
 
 import scipy.constants as const
 import matplotlib.pyplot as plt
+import scipy.interpolate as interp
 import qutip as qu
 import numpy as np
 import seaborn as sb
@@ -236,36 +237,38 @@ class DonorSingletTriplet(SingleDonor):
 	updn = (T0 - S11).unit()
 	dnup = (T0 + S11).unit()
 	
-	def __init__(self, **kwargs):
+	def __init__(self, b_z, delta_Bz, tc, alpha, **kwargs):
 		'''
 		Docstring
 		'''
 		g_factor = kwargs.get('electron_g_factor', 2)
 		ng_factor = kwargs.get('nuclear_g_factor', 2.2632)
 		self.hyperfine = kwargs.get('default_hyperfine', 2*np.pi*114e6)
-		self.b_z = kwargs.get('default_mag_field', 1)
-		self.dBz = kwargs.get('delta_bz', 0.01)
+		detuning = kwargs.get('detuning', 0)
 		
 		self.electron_gyro = g_factor*self._mu_b/const.hbar
 		self.nuclear_gyro = ng_factor*self._mu_n/const.hbar
-		self.Hamiltonian = self.build_hamiltonian(b_z=self.b_z, dBz=self.dBz)
+		
+		self.b_z = b_z
+		self.dBz = delta_Bz
+		self.dBz_freq = self.electron_gyro*self.dBz/(2*np.pi)
+		self.Zeeman = (self.electron_gyro*self.b_z)/(2*np.pi)
+		self.tc = tc
+		self.alpha = alpha
+		
+		self.Hamiltonian = self.build_hamiltonian(detuning)
 
-	def build_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc=1e9, alpha=0.1):
+	def build_hamiltonian(self, detuning=0):
 		'''
 		Build the singlet-triplet Hamiltonian
 		Inputs:
-			b_z (Tesla) - static magnetic field applied along the z direction
-			dBz (Tesla) - delta Bz between the two qubit sites
 			detuning (V) - detuning from the charge degeneracy point in volts
-			tc (Hz)		- tunnel coupling (in frequency units)
 			alpha 		- lever arm of gate that voltage is applied to (unitless)
 		Todo:
 			- Check that detuning scaling is correct (factor of 2pi or not)
 		'''
 		# Convert Zeeman terms to frequency units
-		Zeeman = (0.5*self.electron_gyro*b_z)/(2*np.pi)
-		dBz = 0.5*self.electron_gyro*dBz/(2*np.pi)
-		detuning = alpha*detuning*const.eV/(2*np.pi*const.h)	# Convert from voltage to frequency
+		detuning = self.alpha*detuning*const.eV/(const.h)	# Convert from voltage to frequency
 		# Zeeman term for electrons on left and right dots
 		#~ H_zeeman_left = 0.5*self.electron_gyro*b_z*qu.tensor(qu.sigmaz(), qu.identity(2), qu.identity(2))
 		#~ H_zeeman_right = 0.5*self.electron_gyro*(b_z+dBz)*qu.tensor(qu.identity(2), qu.sigmaz(), qu.identity(2))
@@ -279,13 +282,16 @@ class DonorSingletTriplet(SingleDonor):
 		
 		# Just taking 5 by 5 Hamiltonian 
 		# Defined in the basis [S11, T-, T0, T+, S20]
-		H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
-								[0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
-		return H
+		H = qu.Qobj(np.array([[detuning/2, 0, self.dBz_freq, 0, self.tc], [0, detuning/2-self.Zeeman, 0,0,0], 
+								[self.dBz_freq, 0, detuning/2,0,0], [0,0,0,detuning/2+self.Zeeman,0], 
+								[self.tc,0,0,0,-detuning/2]]))
+		self.Hamiltonian = H
+		# return H
 		
 	def build_full_hamiltonian(self, b_z=1, dBz=0.01, detuning=0, tc1=1e9, tc2=0.5e9, pauli_energy=50e9, alpha=0.1):
 		'''
 		Make the full 8 by 8 spin Hamiltonian for singlet and triplet states on both dots
+		TODO - fix for new philosphy of fixed parameters
 		'''
 		# In the basis (S11, T-11, T011, T+11, S02, T-02, T002, T+02)
 		Zeeman = (0.5*self.electron_gyro*b_z)/(2*np.pi)
@@ -313,8 +319,9 @@ class DonorSingletTriplet(SingleDonor):
 		S20_proj = np.abs(psi.overlap(self.S20))**2
 		updn_proj = np.abs(psi.overlap(self.updn))**2
 		dnup_proj = np.abs(psi.overlap(self.dnup))**2
-		overlap_vec = np.array([S11_proj, Tm_proj, T0_proj, Tp_proj, S20_proj, updn_proj, dnup_proj])
-		return overlap_vec
+		overlap_vec_ST = np.array([S11_proj, Tm_proj, T0_proj, Tp_proj, S20_proj])
+		overlap_vec_UD = np.array([updn_proj, dnup_proj])
+		return overlap_vec_ST, overlap_vec_UD
 		
 	def calculate_exchange(self, detuning, tc):
 		'''
@@ -324,20 +331,20 @@ class DonorSingletTriplet(SingleDonor):
 		return J
 		
 	
-	def plot_spectrum_vs_detuning(self, start, stop, num_points=1000, b_z=1, dBz=0.01, tc=1e9, alpha=0.1):
+	def plot_spectrum_vs_detuning(self, start, stop, num_points=1000):
 		'''
 		'''
-		detuning_sweep = np.linspace(start, stop, num_points)
+		self.current_detuning_sweep = np.linspace(start, stop, num_points)
 		# self.eigenvals = np.zeros([num_points, 8])
 		self.eigenvals = np.zeros([num_points, 5])
 		# projvecs = np.zeros([len(b_sweep), 4])
-		for ind,val in enumerate(detuning_sweep):
-			self.Hamiltonian = self.build_hamiltonian(detuning=val, b_z=b_z, tc=tc, dBz=dBz, alpha=alpha)
+		for ind,val in enumerate(self.current_detuning_sweep):
+			self.build_hamiltonian(detuning=val)
 			# self.Hamiltonian = self.build_full_hamiltonian(detuning=val, b_z=b_z, dBz=dBz, alpha=alpha)
 			self.eigenvals[ind], temp_vecs = self.Hamiltonian.eigenstates()
 			# projvecs[ind] = self.project_eigenvecs(temp_vecs)
 		plt.figure(1)
-		plt.plot(detuning_sweep, self.eigenvals)
+		plt.plot(self.current_detuning_sweep, self.eigenvals)
 		plt.xlabel('Detuning')
 		plt.ylabel('Energy')
 		# plt.figure(2)
@@ -359,21 +366,66 @@ class DonorSingletTriplet(SingleDonor):
 		'''
 		tlist = np.linspace(0, ramp_time, num_points)
 		pulse_args = {'start':start, 'stop': stop, 'tmax': ramp_time}
-		tc = kwargs.get('tunnel_coupling', 500e6)
-		options = kwargs.get('options', None)
-		alpha = kwargs.get('alpha', 0.1)
-		b_z = kwargs.get('b_z', 0.1)
-		dBz = kwargs.get('dBz', 0.005)
-		start_hamiltonian = self.build_hamiltonian(detuning=start, b_z=b_z, dBz=dBz, tc=tc, alpha=alpha)
-		conversion = alpha*const.eV/const.h		# Convert voltage pulse to frequency units
+		# tc = kwargs.get('tunnel_coupling', 500e6)
+		opts = qu.Options(nsteps=100000)
+		# alpha = kwargs.get('alpha', 0.1)
+		# b_z = kwargs.get('b_z', 0.1)
+		# dBz = kwargs.get('dBz', 0.005)
+		self.build_hamiltonian(detuning=start)
+		start_hamiltonian = self.Hamiltonian
+		conversion = self.alpha*const.eV/const.h		# Convert voltage pulse to frequency units
 		detuning_hamiltonian = conversion*qu.Qobj(np.array([[1/2, 0, 0, 0, 0], 
 														[0, 1/2, 0,0,0], 
 														[0, 0, 1/2,0,0], 
 														[0,0,0,1/2,0], 
 														[0,0,0,0,-1/2]]))
 		full_H = [start_hamiltonian, [detuning_hamiltonian, detuning_pulse]]
-		output = qu.mesolve(full_H, psi0, tlist, c_ops=[], e_ops=[], args=pulse_args, options=options, progress_bar=True)
+		output = qu.mesolve(full_H, psi0, tlist, c_ops=[], e_ops=[], args=pulse_args, options=opts, progress_bar=True)
 		return output, tlist
+		
+	def do_pulse_sequence(self, lePulse, psi0, **kwargs):
+		'''
+		Run a detuning pulse sequence
+		'''
+		opts = qu.Options(nsteps=100000)
+		
+		self.build_hamiltonian(detuning=0)
+		initial_hamiltonian = self.Hamiltonian
+		conversion_factor = self.alpha*const.eV/const.h		# Convert voltage pulse to frequency units
+		detuning_hamiltonian = conversion_factor*qu.Qobj(np.array([[1/2, 0, 0, 0, 0], 
+																[0, 1/2, 0,0,0], 
+																[0, 0, 1/2,0,0], 
+																[0,0,0,1/2,0], 
+																[0,0,0,0,-1/2]]))
+		qutip_time_dependence = qu.Cubic_Spline(lePulse.time_vec[0], lePulse.time_vec[-1], lePulse.simulation_waveform)
+		full_H = [initial_hamiltonian, [detuning_hamiltonian, qutip_time_dependence]]
+		output = qu.mesolve(full_H, psi0, tlist=lePulse.time_vec, c_ops=[], e_ops=[], options=opts, progress_bar=True)
+		return output
+		
+	def extract_projections_from_sim_data(self, sim_data):
+		'''
+		Extract projections onto the singlet-triplet and up-down basis for simulation data as returned by Qutip
+		mesolve function
+		'''
+		proj_ST = np.zeros((len(sim_data),5))
+		proj_UD = np.zeros((len(sim_data),2))
+		for ind,val in enumerate(sim_data):
+			proj_ST[ind,:], proj_UD[ind,:] = self.project_eigenvecs(sim_data[ind])
+		return proj_ST, proj_UD
+		
+	def plot_pulse_projections(self, lePulse, proj_ST, proj_UD):
+		'''
+		'''
+		plt.figure(1)
+		plt.plot(lePulse.time_vec, proj_ST, lePulse.time_vec, lePulse.simulation_waveform)
+		plt.legend(['S11 proj', 'T- proj', 'T0 proj', 'T+ proj', 'S20 proj'])
+		plt.show(block=False)
+		
+		plt.figure(2)
+		plt.plot(lePulse.time_vec, proj_UD, lePulse.time_vec, lePulse.simulation_waveform)
+		plt.legend(['UpDn proj', 'DnUp proj'])
+		plt.show(block=False)
+		
 		
 		
 class CoupledDonors(): 
@@ -392,76 +444,86 @@ class CoupledDonors():
 		'''
 		Initialise coupled donor system
 		'''
-<<<<<<< HEAD
 		self.Hamiltonian = self.build_hamiltonian(Donor1, Donor2)
 		
 	def build_hamiltonian(Donor1, Donor2):
 		'''
 		Build the Hamiltonian for coupled donor system
 		'''
-		H_uncoupled = qu.tensor(Donor1.Hamiltonian, qu.identity(2), qu.identity(2)) + qu.tensor(qu.identity(2), ...
+		H_uncoupled = qu.tensor(Donor1.Hamiltonian, qu.identity(2), qu.identity(2)) + qu.tensor(qu.identity(2), 
 								qu.identity(2), Donor2.Hamiltonian)
 		
 		
 		H = qu.Qobj(np.array([[detuning/2, 0, dBz, 0, tc], [0, detuning/2-Zeeman, 0,0,0], [dBz, 0, detuning/2,0,0], 
 								[0,0,0,detuning/2+Zeeman,0], [tc,0,0,0,-detuning/2]]))
-=======
+
 
 class PulseSequence():
 	'''
 	Class to encapsulate a pulsing object which can be used in a time-dependent simulation
 	'''
 	
-	def __init__(self):
+	def __init__(self, pulse_vertices, pulse_timings, dt):
 		'''
 		'''
-		self.segments = []
-		self.segment_names = []
-		
-	def add_segment(self, pulse_seg, name):
-		'''
-		Add a segment to the sequence
-		'''
-		assert (name not in self.segment_names), "Pulse segment with that name already exists!"
-		self.segment_names.append(name)
-		self.segments.append(pulse_seg)
+		self.pulse_vertices = pulse_vertices
+		self.pulse_times = np.cumsum([0] + pulse_timings)
+		self.dt = dt
+		self.make_waveform()
 		
 	def make_waveform(self):
 		'''
-		Concatenate all the segments to make a waveform
 		'''
-		point_waveform = np.zeros(len(self.segments)/2 + 1)
-		for ind,val in enumerate(self.segments):
-			# point_waveform[ind] = 
+		self.le_interpolator = interp.interp1d(self.pulse_times, self.pulse_vertices)
+		self.time_vec = np.arange(self.pulse_times[0], self.pulse_times[-1], self.dt)
+		self.simulation_waveform = self.le_interpolator(self.time_vec)
 		
-	def resample_waveform(self):
+	def resample_waveform(self, new_dt):
 		'''
 		'''
+		self.dt = new_dt
+		self.make_waveform()
+		
+	def plot_waveform(self):
+		'''
+		'''
+		plt.plot(self.time_vec, self.simulation_waveform, 'o')
+		plt.show(block=False)
 		
 		
-class PulseSegment():
+class PulseExperiment():
 	'''
-	Class for pulse segments, which can be stitched together to form a PulseSequence
+	Pulse experiment class to hold simulation data etc for a pulse sequence
+	After writing this I'm starting to think it is overly complicated...
 	'''
 	
-	def __init__(self, pulse_type, duration, start_val, **kwargs):
+	def __init__(self, device, lePulse):
 		'''
 		'''
-		self.pulse_type = pulse_type
-		self.duration = duration
-		self.start_val = start_val
-		self.end_val = kwargs.get('end_val', start_val)
-		self.time_vector = np.array([0, self.duration])
-		self.construct_pulse()
+		self.device = device
+		self.lePulse = lePulse
+		self.simulation_result = None
+	
+	
+	def do_pulse_sequence(self, psi0, **kwargs):
+		'''
+		Run a detuning pulse sequence
+		'''
+		opts = qu.Options(nsteps=100000)
 		
-	def construct_pulse(self):
-		'''
-		'''
-		if (self.pulse_type == 'level'):
-			self.pulse_values = np.array([self.start_val, self.start_val])
-		elif (self.pulse_type == 'ramp'):
-			self.pulse_values = np.array([self.start_val, self.end_val])
-			
+		self.device.build_hamiltonian(detuning=0)
+		initial_hamiltonian = self.device.Hamiltonian
+		conversion_factor = self.device.alpha*const.eV/const.h		# Convert voltage pulse to frequency units
+		detuning_hamiltonian = conversion_factor*qu.Qobj(np.array([[1/2, 0, 0, 0, 0], 
+																[0, 1/2, 0,0,0], 
+																[0, 0, 1/2,0,0], 
+																[0,0,0,1/2,0], 
+																[0,0,0,0,-1/2]]))
+		qutip_time_dependence = qu.Cubic_Spline(self.lePulse.time_vec[0], self.lePulse.time_vec[-1], 
+												self.lePulse.simulation_waveform)
+		full_H = [initial_hamiltonian, [detuning_hamiltonian, qutip_time_dependence]]
+		output = qu.mesolve(full_H, psi0, tlist=self.lePulse.time_vec, c_ops=[], e_ops=[], options=opts, progress_bar=True)
+		self.simulation_result = output
 	
 	
 	
@@ -470,5 +532,3 @@ class PulseSegment():
 	
 	
 	
-	
->>>>>>> 2cfba22e8c0eb5c58dc90b1ee848011220d6c577
